@@ -1,0 +1,36 @@
+import requests
+from csv import writer
+from bs4 import BeautifulSoup
+base_url="https://turbo.az"
+val=15
+with open("masinlar.csv","a+",encoding="utf-8") as file:
+    csv_writer=writer(file)
+    csv_writer.writerow(["Marka","Model","Buraxlis ili","Reng","Yanacaq novu","Muherrik hecmi","Suretler_qutusu","Yurus","Qiymet"])
+    while True:
+        try:
+                res=requests.get(f"{base_url}{'/autos?page='}{val}")
+                soup=BeautifulSoup(res.text,"html.parser")
+                masinlar=soup.findAll(class_="products")[2].findAll(class_="products-i-link")
+                masinlar=set(masinlar)
+                val=val+1
+                for masin in masinlar:
+                    url=masin["href"]
+                    if url.split('/')[1]!="autos":
+                        continue
+                    res1=requests.get(f"{base_url}{url}")
+                    soup1=BeautifulSoup(res1.text, "html.parser")
+                    parametrs = soup1.select('.product-properties-value')
+                    print(parametrs)
+                    price=soup1.select('.product-price')
+                    Marka=parametrs[1].get_text()
+                    Model=parametrs[2].get_text()
+                    Buraxlis_ili=parametrs[3].get_text()
+                    Reng=parametrs[5].get_text()
+                    Yanacaq_novu=parametrs[8].get_text()
+                    Muherrik_hecm=parametrs[6].get_text()
+                    Suret_qutu = parametrs[10].get_text()
+                    Yurus = parametrs[9].get_text()
+                    Qiymet =parametrs[13].get_text()
+                    csv_writer.writerow([Marka,Model,Buraxlis_ili,Reng,Yanacaq_novu,Muherrik_hecm,Suret_qutu,Yurus,Qiymet])
+        except:
+            print("Error!!!")
