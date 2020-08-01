@@ -1,0 +1,241 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Jul 30 00:21:35 2020
+
+@author: Murad
+"""
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.pipeline import FeatureUnion
+from sklearn.pipeline import Pipeline
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.pipeline import Pipeline 
+from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import LabelBinarizer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.pipeline import FeatureUnion
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
+import seaborn as sns
+from collections import Counter
+dataset=pd.read_csv("masinlar.csv")
+
+
+## Use to remove duplicate rows
+dataset=dataset.groupby(['Marka','Model','Buraxlis ili','Reng','Yanacaq novu','Muherrik hecmi','Suretler_qutusu','Yurus','Qiymet']).size().reset_index()
+#Check Missing Value
+print(dataset.isnull().sum())
+#Cleaning Data
+
+def dollar_euro_azn(row):
+    if '$' in str(row):
+       row=row[:-1].replace(' ','')
+       size=float(row)*1.7
+    elif '€' in str(row):
+        row=row[:-1].replace(' ','')
+        size=float(row)*2.01
+    else :   
+         row=row.replace('AZN','').replace(' ','')
+         size=float(row)
+    return size
+dataset = dataset[dataset["Qiymet"] != 'Qiymet'].reset_index()
+dataset.drop('index',axis=1,inplace=True)
+dataset['Qiymet']=dataset['Qiymet'].apply(dollar_euro_azn)
+
+def muherrik(row):
+    if 'L' in str(row):
+       row=row[:-1].replace(' ','')
+       size=float(row)
+    return size
+
+dataset['Muherrik hecmi']=dataset['Muherrik hecmi'].apply(muherrik)
+
+def km(row):
+    if 'km' in str(row):
+       row=row[:-2].replace(' ','')
+       size=float(row)
+    return size
+
+dataset['Yurus']=dataset['Yurus'].apply(km)
+
+dataset['Buraxlis ili']=dataset['Buraxlis ili'].astype(int)
+dataset['Muhil']=dataset['Muherrik hecmi']*dataset['Buraxlis ili']
+print(dataset.info())
+dataset.hist(bins=25,figsize=(15,10))
+dataset.drop(0,axis=1,inplace=True)
+
+print(dataset.Reng.value_counts())
+print(dataset.Model.value_counts())
+print(dataset.Marka.value_counts())
+corr_matrix=dataset.corr()
+print(corr_matrix['Qiymet'])
+
+# Outlier
+def detect_outliers(df,features):
+     outlier=[]
+     for c in features:
+         Q1=np.percentile(df[c],25)
+         Q3=np.percentile(df[c],75)
+         IQR=Q3-Q1
+         outlier_step=1.5*IQR
+         outlier_row=df[(df[c]<Q1-outlier_step)|(df[c]>Q3+outlier_step)].index
+         outlier.extend(outlier_row)
+     outlier=Counter(outlier) 
+     mul_outlier=list(i for i,v in outlier.items() if v>1)
+     return mul_outlier
+
+dataset=dataset.drop(detect_outliers(dataset, ['Yurus','Qiymet','Muherrik hecmi']),axis=0).reset_index(drop=True)
+
+
+
+#EDA 
+
+### Most Sold Marka
+
+marka=dataset.Marka.value_counts()[:15]
+plt.figure(figsize=(15,10))
+sns.barplot(marka.index,marka.values,data=dataset)
+plt.xlabel('Marka')
+plt.ylabel('Frequency')
+plt.xticks(rotation=90)
+plt.show()
+
+model=dataset.Model.value_counts()[:6]
+
+labels=model.index
+sizes=model.values
+explode=[0,0,0,0,0,0]
+colors=["orange","blue","red","green","yellow","black"]
+
+plt.figure(figsize=(7,7))
+plt.pie(sizes,explode=[0.1]*6,labels=labels,colors=colors,autopct='%1.1f%%')
+plt.title('Moset sold Models in Turbo.az',color = 'blue',fontsize = 15)
+plt.show()
+
+
+
+plt.figure(figsize=(15,10))
+sns.boxplot(x=dataset["Yanacaq novu"],y=dataset['Qiymet'],data=dataset)
+plt.show()
+
+
+g=sns.jointplot(dataset.Qiymet,dataset.Yurus,kind='kde',size=7)
+plt.show()
+
+g=sns.jointplot(dataset.Qiymet,dataset.Yurus,kind='scatter',size=7)
+plt.show()
+
+
+a=dataset.groupby(['Model','Marka'])['Qiymet'].mean().sort_values(ascending=False)[:6]
+a=a.reset_index()
+
+plt.figure(figsize=(22,15))
+sns.barplot(x=a.Marka+' '+a.Model,y=a.Qiymet,palette='rocket')
+plt.xticks(rotation=45,fontsize=18)
+plt.show()
+
+
+
+b=dataset.groupby(['Reng'])['Qiymet'].mean().sort_values(ascending=False)[:6]
+b=b.reset_index()
+
+plt.figure(figsize=(22,15))
+sns.barplot(x=b.Reng,y=b.Qiymet,palette="PRGn")
+plt.xticks(rotation=45,fontsize=18)
+plt.show()
+
+sns.countplot(dataset.Reng)
+plt.xticks(rotation=45)
+plt.show()
+
+
+sns.countplot(dataset['Yanacaq novu'])
+plt.show()
+
+sns.boxplot(x=dataset['Yanacaq novu'],y=dataset.Yurus,hue=dataset['Suretler_qutusu'],palette='PRGn')
+plt.show()
+
+sns.countplot(dataset.Suretler_qutusu)
+plt.show()
+
+
+
+
+
+#Predict
+
+dataset=pd.get_dummies(dataset,columns=['Marka','Model','Reng','Yanacaq novu','Suretler_qutusu'])
+cat_attrs=list(dataset.drop(['Buraxlis ili','Muherrik hecmi','Yurus','Qiymet','Muhil'],axis=1))
+num_attrs=['Buraxlis ili','Muherrik hecmi','Yurus','Muhil']
+
+
+dataset['mpg_cat']=np.ceil(dataset['Yurus']/110000)
+dataset["mpg_cat"].where(dataset["mpg_cat"] < 5, 5.0, inplace=True)
+
+from sklearn.model_selection import StratifiedShuffleSplit
+
+split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42) 
+for train_index, test_index in split.split(dataset, dataset["mpg_cat"]):    
+    strat_train_set = dataset.loc[train_index]   
+    strat_test_set = dataset.loc[test_index] 
+for set in (strat_train_set, strat_test_set):   
+    set.drop(["mpg_cat"], axis=1, inplace=True)  
+
+
+
+dataset_labels=strat_train_set["Qiymet"]
+dataset=strat_train_set.drop("Qiymet",axis=1)
+
+
+
+from sklearn.base import BaseEstimator, TransformerMixin
+class DataFrameSelector(BaseEstimator, TransformerMixin):    
+    def __init__(self, attribute_names):        
+        self.attribute_names = attribute_names    
+    def fit(self, X, y=None):        
+        return self
+    def transform(self, X):        
+       return X[self.attribute_names].values   
+
+
+
+
+num_pipeline = Pipeline([('selector', DataFrameSelector(num_attrs)),        
+                         ('imputer', SimpleImputer(strategy="median")),
+                          ('scaler', StandardScaler())
+                         ])
+cat_pipeline = Pipeline([
+('selector', DataFrameSelector(cat_attrs)),
+
+])
+full_pipeline = FeatureUnion(transformer_list=[("num_pipeline", num_pipeline),        
+                                               ("cat_pipeline", cat_pipeline),]) 
+
+
+dataset_prepared=full_pipeline.fit_transform(dataset)
+from sklearn.ensemble import RandomForestRegressor
+ran_reg=RandomForestRegressor()
+from sklearn.model_selection import cross_val_score 
+
+ran_reg.fit(dataset_prepared,dataset_labels)
+Y_pred=ran_reg.predict(dataset_prepared)
+
+from sklearn.model_selection import cross_val_score 
+scores = cross_val_score(ran_reg, dataset_prepared, dataset_labels,                         
+                         scoring="neg_mean_squared_error", cv=10) 
+rmse_scores = np.sqrt(-scores)
+print(rmse_scores.mean())
+ran_reg.fit(dataset_prepared,dataset_labels)
+Y_pred=ran_reg.predict(dataset_prepared)
+
+
+Test_labels=strat_test_set['Qiymet']
+test=strat_test_set.drop("Qiymet",axis=1)
+test_prepared=full_pipeline.transform(test)
+
+ 
+Y_pred_test=ran_reg.predict(test_prepared)
+print(ran_reg.score(test_prepared,Test_labels))
+
